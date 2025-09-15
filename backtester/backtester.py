@@ -53,23 +53,31 @@ def run_backtest():
             logging.error(f"Error loading data for {date_str}. Error: {e}")
             continue
 
-        # --- Simulate Entry at 9:27 AM ---
-        entry_time_str = f"{date_str} 09:27:00+05:30"
+        # --- Simulate Entry at or just after 9:27 AM ---
+        entry_time_str = f"{date_str} 09:27:00"
         try:
-            entry_price_ce = ce_df.loc[entry_time_str]['close']
-            entry_price_pe = pe_df.loc[entry_time_str]['close']
-            logging.info(f"Entry at 9:27 -> CE Price: {entry_price_ce}, PE Price: {entry_price_pe}")
-        except KeyError:
-            logging.warning(f"No data available at 9:27 AM for {date_str}. Skipping day.")
+            # Get the first available candle at or after 9:27
+            ce_entry_candle = ce_df[ce_df.index >= entry_time_str].iloc[0]
+            pe_entry_candle = pe_df[pe_df.index >= entry_time_str].iloc[0]
+
+            entry_price_ce = ce_entry_candle['close']
+            entry_price_pe = pe_entry_candle['close']
+            actual_entry_time = ce_entry_candle.name # Timestamp from the index
+
+            logging.info(f"Entry at {actual_entry_time.time()} -> CE Price: {entry_price_ce}, PE Price: {entry_price_pe}")
+        except IndexError:
+            logging.warning(f"No data available at or after 9:27 AM for {date_str}. Skipping day.")
             continue
 
         # --- Simulate Monitoring Loop ---
         trade_open = True
         exit_reason = "EOD"
         pnl = 0
+        current_pnl = 0
 
-        # Create a combined timeline of the day's prices
-        monitoring_df = ce_df.loc[f"{date_str} 09:28:00":f"{date_str} 15:30:00"]
+        # The monitoring loop must start AFTER the actual entry time
+        monitoring_start_time = actual_entry_time + pd.Timedelta(minutes=1)
+        monitoring_df = ce_df.loc[monitoring_start_time : f"{date_str} 15:30:00"]
 
         for timestamp, row in monitoring_df.iterrows():
             ltp_ce = row['close']

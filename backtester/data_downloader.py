@@ -43,8 +43,19 @@ def initialize_kite_api():
         logging.error(f"Authentication failed: {e}")
         sys.exit(1)
 
+def log_debug_info(message):
+    """Helper function to write to a debug log."""
+    # This will create or append to the debug log in the backtester directory
+    with open(os.path.join(os.path.dirname(__file__), "debug_log.txt"), "a") as f:
+        f.write(f"{message}\n")
+
 def main():
     """Main function to download historical data."""
+    # Clear the old debug log at the start of a new run
+    debug_log_path = os.path.join(os.path.dirname(__file__), "debug_log.txt")
+    if os.path.exists(debug_log_path):
+        os.remove(debug_log_path)
+
     kite = initialize_kite_api()
 
     # --- Define Date Range (last 365 days) ---
@@ -114,8 +125,11 @@ def main():
         pe_instrument = options_df[(options_df['instrument_type'] == 'PE') & (options_df['expiry'] == nearest_expiry)]
 
         if ce_instrument.empty or pe_instrument.empty:
-            logging.error(f"Could not find option contracts for strike {atm_strike} on {date_str}.")
+            debug_message = f"[{date_str}] Failed to find contracts. Searched for Strike: {atm_strike}, Expiry on or after: {current_date.date()}, Nearest Expiry Found: {nearest_expiry if not options_df.empty else 'N/A'}"
+            log_debug_info(debug_message)
+            logging.warning(f"Could not find option contracts for strike {atm_strike} on {date_str}. See debug_log.txt.")
             current_date += timedelta(days=1)
+            time.sleep(0.5) # A small sleep to prevent rapid failing loops
             continue
 
         ce_token = ce_instrument.iloc[0]['instrument_token']
@@ -134,9 +148,18 @@ def main():
             pe_symbol: pe_token
         }
 
+        # --- 5. Download and Save Data ---
+        # Get the directory where the script is located to build robust paths
+        script_dir = os.path.dirname(__file__)
+        data_dir = os.path.join(script_dir, 'data')
+
+        # Create the data directory if it doesn't exist
+        os.makedirs(data_dir, exist_ok=True)
+
         for symbol, token in instruments_to_download.items():
+            file_path = os.path.join(data_dir, f"{date_str}_{symbol}.csv")
+
             # Check if file already exists to avoid re-downloading
-            file_path = f"backtester/data/{date_str}_{symbol}.csv"
             if os.path.exists(file_path):
                 logging.info(f"Data for {symbol} on {date_str} already exists. Skipping.")
                 continue
