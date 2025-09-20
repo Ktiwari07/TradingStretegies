@@ -25,12 +25,15 @@ def initialize_kite_api():
     logging.info("Initializing Kite Connect API...")
     kite = KiteConnect(api_key=config.API_KEY)
 
-    # The user must have a valid request_token in config.py for this to work
-    if not config.REQUEST_TOKEN:
-        login_url = kite.login_url()
+    # Check for API key and secret
+    if not all([config.API_KEY, config.API_SECRET]) or "YOUR" in config.API_KEY:
+        logging.error("API_KEY or API_SECRET is not set in config.py. Please add them to proceed.")
+        sys.exit(1)
+
+    # Check for request token
+    if not config.REQUEST_TOKEN or "YOUR" in config.REQUEST_TOKEN:
         logging.error("REQUEST_TOKEN is not set in config.py.")
-        logging.info(f"Please generate one by visiting this URL: {login_url}")
-        logging.info("Then paste it into config.py and rerun the downloader.")
+        logging.error("Please run 'python backtester/get_token.py' to generate a new token.")
         sys.exit(1)
 
     try:
@@ -41,6 +44,8 @@ def initialize_kite_api():
         return kite
     except Exception as e:
         logging.error(f"Authentication failed: {e}")
+        logging.error("The REQUEST_TOKEN might be expired or invalid.")
+        logging.error("Please run 'python backtester/get_token.py' to generate a new token.")
         sys.exit(1)
 
 def main():
