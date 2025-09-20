@@ -57,6 +57,11 @@ def main():
     from_date = to_date - timedelta(days=365)
     logging.info(f"Data download range: {from_date.date()} to {to_date.date()}")
 
+    # --- Setup Data Directory ---
+    script_dir = os.path.dirname(__file__)
+    data_dir = os.path.join(script_dir, 'data')
+    os.makedirs(data_dir, exist_ok=True)
+
     # --- Get NFO Instruments ---
     # We need this list to find the correct option contracts
     try:
@@ -77,6 +82,18 @@ def main():
         
         # We only care about weekdays
         if current_date.weekday() >= 5: # 5 = Saturday, 6 = Sunday
+            current_date += timedelta(days=1)
+            continue
+
+        # --- Check if data for this day already exists to avoid API calls ---
+        nifty_file = os.path.join(data_dir, f"{date_str}_NIFTY50.csv")
+        # List files for the current day to check for CE/PE contracts
+        day_files = [f for f in os.listdir(data_dir) if f.startswith(date_str)]
+        has_ce = any("CE.csv" in f for f in day_files)
+        has_pe = any("PE.csv" in f for f in day_files)
+
+        if os.path.exists(nifty_file) and has_ce and has_pe:
+            logging.info(f"Data for {date_str} appears complete. Skipping day.")
             current_date += timedelta(days=1)
             continue
 
@@ -140,13 +157,6 @@ def main():
         }
 
         # --- 5. Download and Save Data ---
-        # Get the directory where the script is located to build robust paths
-        script_dir = os.path.dirname(__file__)
-        data_dir = os.path.join(script_dir, 'data')
-
-        # Create the data directory if it doesn't exist
-        os.makedirs(data_dir, exist_ok=True)
-
         for symbol, token in instruments_to_download.items():
             file_path = os.path.join(data_dir, f"{date_str}_{symbol}.csv")
             
