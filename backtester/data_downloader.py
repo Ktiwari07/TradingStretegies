@@ -43,19 +43,8 @@ def initialize_kite_api():
         logging.error(f"Authentication failed: {e}")
         sys.exit(1)
 
-def log_debug_info(message):
-    """Helper function to write to a debug log."""
-    # This will create or append to the debug log in the backtester directory
-    with open(os.path.join(os.path.dirname(__file__), "debug_log.txt"), "a") as f:
-        f.write(f"{message}\n")
-
 def main():
     """Main function to download historical data."""
-    # Clear the old debug log at the start of a new run
-    debug_log_path = os.path.join(os.path.dirname(__file__), "debug_log.txt")
-    if os.path.exists(debug_log_path):
-        os.remove(debug_log_path)
-
     kite = initialize_kite_api()
 
     # --- Define Date Range (last 365 days) ---
@@ -80,7 +69,7 @@ def main():
     current_date = from_date
     while current_date <= to_date:
         date_str = current_date.strftime('%Y-%m-%d')
-
+        
         # We only care about weekdays
         if current_date.weekday() >= 5: # 5 = Saturday, 6 = Sunday
             current_date += timedelta(days=1)
@@ -98,7 +87,7 @@ def main():
             nifty_hist_data = kite.historical_data(nifty_instrument_token, time_9_27 - timedelta(minutes=5), time_9_27, "minute")
             if not nifty_hist_data:
                 raise ValueError("Nifty 50 historical data not found, likely a holiday.")
-
+            
             nifty_ltp_at_9_27 = nifty_hist_data[-1]['close']
             atm_strike = round(nifty_ltp_at_9_27 / 50) * 50
             logging.info(f"Nifty LTP at 9:27 was {nifty_ltp_at_9_27}. ATM Strike: {atm_strike}")
@@ -119,19 +108,16 @@ def main():
         ]
         nearest_expiry = options_df['expiry'].min()
         logging.info(f"Nearest expiry for {date_str} is {nearest_expiry}")
-
+        
         # --- 3. Get instrument tokens for the CE and PE options ---
         ce_instrument = options_df[(options_df['instrument_type'] == 'CE') & (options_df['expiry'] == nearest_expiry)]
         pe_instrument = options_df[(options_df['instrument_type'] == 'PE') & (options_df['expiry'] == nearest_expiry)]
 
         if ce_instrument.empty or pe_instrument.empty:
-            debug_message = f"[{date_str}] Failed to find contracts. Searched for Strike: {atm_strike}, Expiry on or after: {current_date.date()}, Nearest Expiry Found: {nearest_expiry if not options_df.empty else 'N/A'}"
-            log_debug_info(debug_message)
-            logging.warning(f"Could not find option contracts for strike {atm_strike} on {date_str}. See debug_log.txt.")
+            logging.error(f"Could not find option contracts for strike {atm_strike} on {date_str}.")
             current_date += timedelta(days=1)
-            time.sleep(0.5) # A small sleep to prevent rapid failing loops
             continue
-
+            
         ce_token = ce_instrument.iloc[0]['instrument_token']
         ce_symbol = ce_instrument.iloc[0]['tradingsymbol']
         pe_token = pe_instrument.iloc[0]['instrument_token']
@@ -141,7 +127,7 @@ def main():
         # --- 4. Download historical data for Nifty, CE, and PE for the whole day ---
         from_datetime_full_day = current_date.replace(hour=9, minute=15, second=0)
         to_datetime_full_day = current_date.replace(hour=15, minute=30, second=0)
-
+        
         instruments_to_download = {
             'NIFTY50': nifty_instrument_token,
             ce_symbol: ce_token,
@@ -158,7 +144,7 @@ def main():
 
         for symbol, token in instruments_to_download.items():
             file_path = os.path.join(data_dir, f"{date_str}_{symbol}.csv")
-
+            
             # Check if file already exists to avoid re-downloading
             if os.path.exists(file_path):
                 logging.info(f"Data for {symbol} on {date_str} already exists. Skipping.")
@@ -168,18 +154,18 @@ def main():
                 logging.info(f"Downloading data for {symbol} on {date_str}...")
                 hist_data = kite.historical_data(token, from_datetime_full_day, to_datetime_full_day, "minute")
                 df = pd.DataFrame(hist_data)
-
+                
                 if df.empty:
                     logging.warning(f"No data returned for {symbol} on {date_str}.")
                     continue
-
+                
                 # 5. Save data to CSV
                 df.to_csv(file_path, index=False)
                 logging.info(f"Successfully saved data to {file_path}")
 
             except Exception as e:
                 logging.error(f"Failed to download or save data for {symbol} on {date_str}. Error: {e}")
-
+            
             # Rate limiting between each download call
             time.sleep(0.5)
 
