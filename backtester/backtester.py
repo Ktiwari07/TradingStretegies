@@ -3,6 +3,7 @@ import os
 import sys
 import glob
 import pandas as pd
+import subprocess
 
 # --- Add parent directory to path to import config ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -153,7 +154,10 @@ def run_backtest():
         logging.warning("No trades were simulated.")
 
 def generate_performance_report(results_df):
-    """Calculates and prints a detailed performance report."""
+    """
+    Calculates and prints a detailed performance report, then saves the results
+    and triggers the visual report generation.
+    """
     logging.info("--- Generating Performance Report ---")
     
     total_pnl = results_df['pnl'].sum()
@@ -201,9 +205,34 @@ def generate_performance_report(results_df):
         print(f"    | {reason:<21} | {count:<21} |")
     print("    -------------------------------------------------")
     
+    # --- Save raw results to CSV ---
     report_file_path = os.path.join(os.path.dirname(__file__), 'backtest_results.csv')
     results_df.to_csv(report_file_path, index=False)
     logging.info(f"Detailed daily results saved to {report_file_path}")
+
+    # --- Automatically generate the visual HTML report ---
+    logging.info("Generating visual report...")
+    try:
+        visualize_script_path = os.path.join(os.path.dirname(__file__), 'visualize_results.py')
+        python_executable = sys.executable  # Use the same python interpreter
+
+        # Check if the visualization script exists before trying to run it
+        if not os.path.exists(visualize_script_path):
+             raise FileNotFoundError(f"Visualization script not found at {visualize_script_path}")
+
+        result = subprocess.run(
+            [python_executable, visualize_script_path],
+            check=True, capture_output=True, text=True
+        )
+        logging.info(f"Visual report generated: backtest_report.html")
+        logging.info(f"Visualize script output:\n{result.stdout}")
+    except FileNotFoundError as e:
+        logging.warning(f"{e}. Skipping visual report generation.")
+    except subprocess.CalledProcessError as e:
+        logging.error("Failed to generate visual report.")
+        logging.error(f"Return Code: {e.returncode}")
+        logging.error(f"Stdout: {e.stdout}")
+        logging.error(f"Stderr: {e.stderr}")
 
 
 if __name__ == "__main__":

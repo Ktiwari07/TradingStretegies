@@ -1,0 +1,9 @@
+# Ignore generated HTML reports
+*.html
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore virtual environment
+.venv/
