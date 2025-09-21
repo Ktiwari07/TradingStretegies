@@ -48,6 +48,74 @@ def initialize_kite_api():
         logging.error("Please run 'python backtester/get_token.py' to generate a new token.")
         sys.exit(1)
 
+def get_expiry_date(current_date):
+    """
+    Calculates the nearest weekly expiry date for Nifty options.
+    - Before Sep 1, 2025: Expiry is on Thursday.
+    - From Sep 1, 2025: Expiry is on Tuesday.
+    - If expiry falls on a holiday, it's shifted to the previous working day.
+    """
+    HOLIDAYS_2024 = [
+        datetime(2024, 1, 26).date(),
+        datetime(2024, 3, 8).date(),
+        datetime(2024, 3, 25).date(),
+        datetime(2024, 3, 29).date(),
+        datetime(2024, 4, 11).date(),
+        datetime(2024, 4, 17).date(),
+        datetime(2024, 5, 1).date(),
+        datetime(2024, 6, 17).date(),
+        datetime(2024, 7, 17).date(),
+        datetime(2024, 8, 15).date(),
+        datetime(2024, 10, 2).date(),
+        datetime(2024, 11, 1).date(),
+        datetime(2024, 11, 15).date(),
+        datetime(2024, 12, 25).date(),
+    ]
+
+    HOLIDAYS_2025 = [
+        datetime(2025, 2, 26).date(),
+        datetime(2025, 3, 14).date(),
+        datetime(2025, 3, 31).date(),
+        datetime(2025, 4, 10).date(),
+        datetime(2025, 4, 14).date(),
+        datetime(2025, 4, 18).date(),
+        datetime(2025, 5, 1).date(),
+        datetime(2025, 8, 15).date(),
+        datetime(2025, 8, 27).date(),
+        datetime(2025, 10, 2).date(),
+        datetime(2025, 10, 21).date(),
+        datetime(2025, 10, 22).date(),
+        datetime(2025, 11, 5).date(),
+        datetime(2025, 12, 25).date(),
+    ]
+
+    ALL_HOLIDAYS = HOLIDAYS_2024 + HOLIDAYS_2025
+
+    current_date_d = current_date.date()
+    sept_1_2025 = datetime(2025, 9, 1).date()
+
+    if current_date_d < sept_1_2025:
+        target_weekday = 3  # Thursday
+    else:
+        target_weekday = 1  # Tuesday
+
+    days_ahead = (target_weekday - current_date_d.weekday() + 7) % 7
+    expiry_date = current_date_d + timedelta(days=days_ahead)
+
+    original_expiry = expiry_date
+    while expiry_date in ALL_HOLIDAYS or expiry_date.weekday() >= 5:
+        expiry_date -= timedelta(days=1)
+
+    if expiry_date < current_date_d:
+        next_week_expiry = original_expiry + timedelta(weeks=1)
+
+        while next_week_expiry in ALL_HOLIDAYS or next_week_expiry.weekday() >= 5:
+            next_week_expiry -= timedelta(days=1)
+        return next_week_expiry
+
+    return expiry_date
+
+
 def main():
     """Main function to download historical data."""
     kite = initialize_kite_api()
@@ -121,19 +189,22 @@ def main():
             continue
 
         # --- 2. Find the nearest weekly expiry ---
-        # Filter for Nifty options that have not expired yet
-        options_df = instrument_df[
-            (instrument_df['name'] == 'NIFTY') &
-            (instrument_df['expiry'] >= current_date.date()) &
-            (instrument_df['strike'] == atm_strike) &
-            (instrument_df['instrument_type'].isin(['CE', 'PE']))
-        ]
-        nearest_expiry = options_df['expiry'].min()
+        nearest_expiry = get_expiry_date(current_date)
         logging.info(f"Nearest expiry for {date_str} is {nearest_expiry}")
         
         # --- 3. Get instrument tokens for the CE and PE options ---
-        ce_instrument = options_df[(options_df['instrument_type'] == 'CE') & (options_df['expiry'] == nearest_expiry)]
-        pe_instrument = options_df[(options_df['instrument_type'] == 'PE') & (options_df['expiry'] == nearest_expiry)]
+        ce_instrument = instrument_df[
+            (instrument_df['name'] == 'NIFTY') &
+            (instrument_df['expiry'] == nearest_expiry) &
+            (instrument_df['strike'] == atm_strike) &
+            (instrument_df['instrument_type'] == 'CE')
+        ]
+        pe_instrument = instrument_df[
+            (instrument_df['name'] == 'NIFTY') &
+            (instrument_df['expiry'] == nearest_expiry) &
+            (instrument_df['strike'] == atm_strike) &
+            (instrument_df['instrument_type'] == 'PE')
+        ]
 
         if ce_instrument.empty or pe_instrument.empty:
             logging.error(f"Could not find option contracts for strike {atm_strike} on {date_str}.")
