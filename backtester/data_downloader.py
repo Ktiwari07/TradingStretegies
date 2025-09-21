@@ -193,8 +193,18 @@ def main():
         logging.info(f"Nearest expiry for {date_str} is {nearest_expiry}")
         
         # --- 3. Get instrument tokens for the CE and PE options ---
-        ce_instrument = options_df[(options_df['instrument_type'] == 'CE') & (options_df['expiry'] == nearest_expiry)]
-        pe_instrument = options_df[(options_df['instrument_type'] == 'PE') & (options_df['expiry'] == nearest_expiry)]
+        ce_instrument = instrument_df[
+            (instrument_df['name'] == 'NIFTY') &
+            (instrument_df['expiry'] == nearest_expiry) &
+            (instrument_df['strike'] == atm_strike) &
+            (instrument_df['instrument_type'] == 'CE')
+        ]
+        pe_instrument = instrument_df[
+            (instrument_df['name'] == 'NIFTY') &
+            (instrument_df['expiry'] == nearest_expiry) &
+            (instrument_df['strike'] == atm_strike) &
+            (instrument_df['instrument_type'] == 'PE')
+        ]
 
         if ce_instrument.empty or pe_instrument.empty:
             logging.error(f"Could not find option contracts for strike {atm_strike} on {date_str}.")
